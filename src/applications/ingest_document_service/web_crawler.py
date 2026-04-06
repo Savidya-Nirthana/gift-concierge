@@ -198,7 +198,8 @@ class KaprukaCrawler:
                     doc_data = self.extract_main_content(soup, url)
                     print(doc_data)
                     break
-
+                except:
+                    pass
 
 
 
