@@ -130,7 +130,7 @@ observability:
 # ============================================================================
 qdrant:
   # Collection name for RAG chunks
-  collection_name: nawaloka
+  collection_name: kapruka
   # Note: QDRANT_API_KEY and QDRANT_URL must be set in .env file
 
 # ============================================================================

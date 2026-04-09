@@ -39,7 +39,7 @@ def _load_yaml(filename: str) -> Dict[str, Any]:
     filepath = _CONFIG_DIR / filename
     if not filepath.exists():
         return {}
-    with open(filepath, "r") as f:
+    with open(filepath, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 
@@ -166,7 +166,8 @@ KB_DIR = _PROJECT_ROOT / _get_nested(_PARAMS, "paths", "kb_dir", default="data/k
 
 # Alternative ingestion sources (used by pipeline.py loader map)
 JSONL_DIR = DATA_DIR / "jsonl"
-MARKDOWN_DIR = _PROJECT_ROOT / _get_nested(_PARAMS, "paths", "markdown_dir", default="data/nawaloka_markdown")
+MARKDOWN_DIR = _PROJECT_ROOT / _get_nested(_PARAMS, "paths", "markdown_dir", default="data/kapruka_markdowns")
+CRAWL_OUT_DIR = DATA_DIR
 
 # NOTE: Both RAG KB and CAG cache live in Qdrant Cloud (separate collections).
 # NOTE: ST memory lives in Supabase (st_turns table).
