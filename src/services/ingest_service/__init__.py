@@ -9,6 +9,7 @@ from .chunkers import (
 )
 
 from .web_crawler import KaprukaCrawler
+from .pipeline import run_ingest
 
 __all__ = [
     "semantic_chunk",
@@ -19,6 +20,7 @@ __all__ = [
     "late_chunk_split",
     "count_tokens",
     "KaprukaCrawler",
+    "run_ingest"
 ]
 
 

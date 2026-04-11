@@ -30,7 +30,7 @@ embedding:
   # Model tier: "default" (3072d) or "small" (1536d)
   # ⚠️ Supabase pgvector IVFFlat indexes max 2000 dims → use "small"
   tier: small
-  batch_size: 100
+  batch_size: 10
   show_progress: false
 
 # ============================================================================

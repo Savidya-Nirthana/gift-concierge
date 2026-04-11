@@ -67,4 +67,210 @@ def load_kb_docs(kb_dir: Path|None = None,) -> List[Dict[str, Any]]:
     return docs
 
 
+def load_markdown_docs(md_dir: Path | None = None) -> List[Dict[str, Any]]:
+    """Load markdown files from directory"""
+
+    md_dir = Path(md_dir or MARKDOWN_DIR)
+    if not md_dir.exists():
+        raise FileNotFoundError(f"Markdown directory not found: {md_dir}")
+
+    docs: List[Dict[str, Any]] = []
+
+    for md_file in sorted(md_dir.glob("*.md")):
+        content = md_file.read_text(encoding="utf-8").strip()
+        if not content:
+            continue
+    
+        title = content.split("\n", 1)[0].strip() or md_file.stem
+        url = f"https://kapruka.com/{md_file.stem}"
+        docs.append({
+            "url": url,
+            "title": title,
+            "content": content,
+        })
+
+    logger.info(f"Loaded {len(docs)} markdown documents from {md_dir}")
+    return docs
         
+def load_jsonl_docs(jsonl_dir: Path | None = None) -> List[Dict[str, Any]]:
+    """Load documents from JSONL crawl output."""
+    jsonl_dir = Path(jsonl_dir or JSONL_DIR)
+    if not jsonl_dir.exists():
+        raise FileNotFoundError(f"JSONL directory not found: {jsonl_dir}")
+
+    docs: List[Dict[str, Any]] = []
+    for jsonl_file in sorted(jsonl_dir.glob("*.jsonl")):
+        with open(jsonl_file, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                obj = json.loads(line)
+                if obj.get("content"):
+                    docs.append(
+                        {
+                            "url": obj.get("url", ""),
+                            "title": obj.get("title", ""),
+                            "content": obj["content"],
+                        }
+                    )
+
+    logger.info("Loaded {} documents from JSONL in {}", len(docs), jsonl_dir)
+    return docs
+
+
+LOADER_MAP = {
+    "kb": load_kb_docs,
+    "markdown": load_markdown_docs,
+    "jsonl": load_jsonl_docs
+}
+
+def embed_texts(
+    texts: List[str],
+    batch_size: int = EMBEDDING_BATCH_SIZE,
+) -> List[List[float]]:
+    """Embed a list of texts using the configured embedding model."""
+    embedder = get_default_embeddings(batch_size=batch_size)
+    all_embeddings: List[List[float]] = []
+
+    total_batches = (len(texts) + batch_size - 1) // batch_size
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i : i + batch_size]
+        batch_num = i // batch_size + 1
+        logger.info(
+            "Embedding batch {}/{} ({} texts)...",
+            batch_num,
+            total_batches,
+            len(batch),
+        )
+        try:
+            batch_embeddings = embedder.embed_documents(batch)
+            all_embeddings.extend(batch_embeddings)
+        except Exception as e:
+            logger.warning(f"Batch {batch_num} failed with error: {e}. Falling back to 1-by-1 embedding for this batch.")
+            # Fallback to embedding one by one
+            for text_idx, text in enumerate(batch):
+                try:
+                    single_emb = embedder.embed_documents([text])
+                    all_embeddings.extend(single_emb)
+                except Exception as inner_e:
+                    logger.error(f"Failed to embed chunk {i + text_idx} individually: {inner_e}")
+                    # You cannot just skip appending otherwise your chunks and embeddings arrays will have different lengths!
+                    # If we skip, we have a mismatch! We must append an empty embedding or modify how chunks are filtered.
+                    # Wait, since `pipeline.py` relies on `embeddings = embed_texts(texts)`, 
+                    # if `len(embeddings) != len(texts)`, the upsert will crash!
+                    # For a Qdrant upsert, we can supply a zero vector or we need to filter chunks alongside text.
+                    # Let's append an array of zeros.
+                    all_embeddings.append([0.0] * 1536)
+
+    return all_embeddings
+
+
+
+def _build_parent_lookup(parents: List[Dict[str, Any]]) -> Dict[str, str]:
+    """Build a mapping from parent_id → parent text."""
+    return {p["parent_id"]: p["text"] for p in parents}
+
+
+def _enrich_children_with_parent_text(
+    children: List[Dict[str, Any]],
+    parent_lookup: Dict[str, str],
+) -> List[Dict[str, Any]]:
+    """Attach ``parent_text`` to each child chunk for richer LLM context."""
+    for child in children:
+        pid = child.get("parent_id", "")
+        child["parent_text"] = parent_lookup.get(pid, child["text"])
+    return children
+
+
+def run_ingest(
+    source: str = "kb",
+    strategy: str = "parent_child",
+    recreate: bool = False,
+) -> int:
+    """
+    Run the full ingestion pipeline.
+    Returns the number of chunks upserted.
+    """
+
+    logger.info("=" * 70)
+    logger.info("🚀 QDRANT INGESTION PIPELINE")
+    logger.info("=" * 70)
+
+    #load documents
+    loader = LOADER_MAP.get(source)
+
+    if not loader:
+        raise ValueError(f"Unknown source: {source}")
+    
+
+    logger.info(f"\n📂 Loading documents (source={source})...")
+    docs = loader()
+    if not docs:
+        logger.error("❌ No documents loaded. Nothing to ingest.")
+        sys.exit(1)
+
+    #chunking
+    logger.info("\n✂️  Chunking documents (strategy={})...", strategy)
+    chunker_fn = STRATEGY_MAP.get(strategy)
+    if not chunker_fn:
+        raise ValueError(f"Unknown chunking strategy: {strategy}")
+    
+    if strategy == "parent_child":
+        children, parents = chunker_fn(docs)
+        logger.info(f"   → {len(children)} child chunks, {len(parents)} parent chunks")
+        parent_lookup = _build_parent_lookup(parents)
+        chunks = _enrich_children_with_parent_text(children, parent_lookup)
+        logger.info("   → Each child enriched with parent_text for richer LLM context")
+    else:
+        chunks = chunker_fn(docs)
+        logger.info(f"   → {len(chunks)} chunks created")
+
+    # Filter out empty chunks to prevent embedding API errors
+    original_chunk_count = len(chunks)
+    chunks = [c for c in chunks if c.get("text") and str(c["text"]).strip()]
+    if len(chunks) < original_chunk_count:
+        logger.warning(f"⚠️ Filtered out {original_chunk_count - len(chunks)} chunks with empty text.")
+
+    if not chunks:
+        logger.error("❌ No chunks produced. Check your documents.")
+        sys.exit(1)
+
+    #embedding
+    logger.info("\n🧠 Embedding chunks...")
+    texts = [c["text"] for c in chunks]
+    t0 = time.time()
+    embeddings = embed_texts(texts)
+    logger.success("   → Generated embeddings for all chunks in {:.2f} seconds", time.time() - t0)
+
+    #create / recreate collection
+    logger.info("\n🗄  Ensuring Qdrant collection: {}", QDRANT_COLLECTION_NAME)
+    if recreate:
+        logger.warning("   → Recreating collection (delete + create)...")
+        delete_collection(QDRANT_COLLECTION_NAME)
+    ensure_collection(QDRANT_COLLECTION_NAME)
+
+    #upsert
+    logger.info("\n🗄  Upserting to Qdrant collection: {}", QDRANT_COLLECTION_NAME)
+    t0 = time.time()
+    n = upsert_chunks(chunks, embeddings)
+    logger.success("✅ Successfully upserted {} chunks in {:.2f} seconds", n, time.time() - t0)
+
+    #verify
+    logger.info("\n📊 Collection info:")
+    info = collection_info()
+    for k, v in info.items():
+        logger.info(f"   {k}: {v}")
+
+    logger.info("\n" + "=" * 70)
+    logger.success("✅ INGESTION COMPLETE")
+    logger.info(f"   Source: {source}")
+    logger.info(f"   Strategy: {strategy}")
+    logger.info(f"   Chunks indexed: {n}")
+    if strategy == "parent_child":
+        logger.info("   Parent context: Stored in payload for richer LLM generation")
+    logger.info("=" * 70)
+
+    return n
+
+    

@@ -44,7 +44,7 @@ def get_qdrant_client() -> QdrantClient:
     _qdrant_client = QdrantClient(
         url = QDRANT_URL,
         api_key=QDRANT_API_KEY,
-        timeout=30
+        timeout=60.0
     )
 
     logger.info(
@@ -124,7 +124,7 @@ def upsert_chunks(
     chunks: List[Dict[str, Any]],
     embeddings: List[List[float]],
     collection_name: str = QDRANT_COLLECTION_NAME,
-    batch_size: int = 100,
+    batch_size: int = 50,
 ) -> int:
     """
     Upsert text chunks and their embeddings into Qdrant.
@@ -188,7 +188,7 @@ def upsert_chunks(
 
 
 def search_chunks(
-    quesry_vector: List[float],
+    query_vector: List[float],
     top_k: int = 5,
     score_threshold: float = 0.0,
     collection_name: str = QDRANT_COLLECTION_NAME,

@@ -21,6 +21,7 @@ from infrastructure.config import (
     LATE_CHUNK_CONTEXT_WINDOW,
 )
 
+
 from infrastructure.models import Document, Chunk
 
 def count_tokens(text: str, model: str = "gpt-4") -> int:

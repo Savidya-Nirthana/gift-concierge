@@ -29,7 +29,7 @@ class Document:
     
 
 @dataclass
-class chunk:
+class Chunk:
     """
     Represent a text chunk from a document.
     Attricbutes:
