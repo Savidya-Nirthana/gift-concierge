@@ -203,7 +203,7 @@ LATE_CHUNK_CONTEXT_WINDOW = _get_nested(_PARAMS, "chunking", "late", "context_wi
 # ========================================
 
 TOP_K_RESULTS = _get_nested(_PARAMS, "retrieval", "top_k", default=4)
-SIMILARITY_THRESHOLD = _get_nested(_PARAMS, "retrieval", "similarity_threshold", default=0.7)
+SIMILARITY_THRESHOLD = _get_nested(_PARAMS, "retrieval", "similarity_threshold", default=0.6)
 
 # ========================================
 # CAG Configuration (Qdrant Semantic Cache)

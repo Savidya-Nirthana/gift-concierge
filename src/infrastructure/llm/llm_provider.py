@@ -8,7 +8,7 @@ Three specialised LLMs for different tasks:
 """
 
 
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 from langchain_openai import ChatOpenAI
 
 from infrastructure.config import (
@@ -28,7 +28,7 @@ def _build_llm(
     provider: str, 
     temperature: float = 0,
     streaming: bool = False,
-    max_tokens: Optional[int] = 500,
+    max_tokens: Optional[int] = None,
     **kwargs: Any,
 ) -> ChatOpenAI:
     """Build LLM instance based on provider"""
