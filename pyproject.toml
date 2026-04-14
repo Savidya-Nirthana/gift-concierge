@@ -13,6 +13,7 @@ dependencies = [
     "langchain-core>=1.2.27",
     "langchain-openai>=1.1.12",
     "langchain-text-splitters>=1.1.1",
+    "langfuse>=4.2.0",
     "loguru>=0.7.3",
     "markdownify>=1.2.2",
     "pytest-playwright>=0.7.2",

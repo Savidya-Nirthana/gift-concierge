@@ -233,6 +233,8 @@ CRAWL_MAX_PAGES = _get_nested(_PARAMS, "crawling", "max_pages", default=100)
 # Memory Configuration (NOT in YAML - kept as constants)
 # ========================================
 
+ST_STORE_DIR = _PROJECT_ROOT / _get_nested(_PARAMS, "paths", "st_store_dir", default="memory/st_store")
+
 # Timezone (used by web_search_tool for timestamp display)
 TIMEZONE = "Asia/Colombo"
 

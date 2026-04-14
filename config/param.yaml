@@ -108,7 +108,7 @@ paths:
   # Markdown & JSONL dirs are fallback ingestion sources (pipeline.py)
   markdown_dir: data/kapruka_markdowns
   logs_dir: logs
-  
+  st_store_dir: memory/st_store
 
 # ============================================================================
 # Logging

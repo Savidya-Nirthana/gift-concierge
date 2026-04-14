@@ -16,6 +16,7 @@ from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.retrievers import BaseRetriever
 
 from infrastructure.config import TOP_K_RESULTS, SIMILARITY_THRESHOLD
+from infrastructure.observability import observe, update_current_observation
 from services.chat_service.rag_templates import RAG_TEMPLATE
 from infrastructure.utils import format_docs
 from infrastructure.db.qdrant_client import search_chunks
@@ -111,14 +112,19 @@ class QdrantRetriever(BaseRetriever):
         """
         query_vector = self.embedder.embed_query(query)
 
-        # Fetch more candidates than top_k so we still have enough
-        # after filtering out add-on / duplicate chunks
-        fetch_k = self.top_k * 3
+        # Fetch many more candidates than top_k because add-on chunks
+        # (identical across products) will be filtered out, and we need
+        # to dig past them to reach actual product description chunks.
+        fetch_k = min(self.top_k * 10, 200)
+
+        # Use a lower threshold internally so real product chunks
+        # (which score lower than the shared add-on tables) can be reached.
+        internal_threshold = self.score_threshold * 0.5
 
         hits = search_chunks(
             query_vector=query_vector,
             top_k=fetch_k,
-            score_threshold=self.score_threshold,
+            score_threshold=internal_threshold,
         )
 
         seen_parents: set = set()
@@ -232,6 +238,7 @@ class RAGService:
 
         self.chain = build_rag_chain(self.retriever, llm, k)
     
+    @observe(name="rag_generate", as_type="generation")
     def generate(self, query:str) -> Dict[str, Any]:
         start = time.time()
         evidence = self.retriever.invoke(query)
@@ -241,6 +248,8 @@ class RAGService:
         elapsed = time.time() - start
 
         evidence_url = list(set(doc.metadata.get("url", "") for doc in evidence))
+        
+        update_current_observation(input=query, output=answer)
 
         return {
             "answer" : answer,
